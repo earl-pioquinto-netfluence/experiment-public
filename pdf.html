@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Text Extractor</title>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
+</head>
+<body>
+    <div style="display: flex; flex-direction: column; padding: 30px;">
+        <div>
+            <input type="file" id="pdfFileInput" accept=".pdf">
+            <button onclick="extractText()">Extract Text</button>
+            <button onclick="arrayToCSV()">Download CSV</button>
+        </div>
+        <div class="output"></div>
+    </div>
+    <div id="overlay" class="overlay">
+        <div class="overlay-content">
+            <span class="close-btn" onclick="closeOverlay()">&times;</span>
+            <p>Embedding data... <span id="embedProgressCount">0</span> out of <span id="embedProgressTotal">0</span> completed. </p>
+        </div>
+    </div>
+
+    <script>
+    // Set the worker source for pdf.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+
+    let EMBEDDING_DATA = [];
+    let OVERLAY_COUNTER = 0;
+    const dataTemplate = () => {
+        return { "text": "text content", "page": 1, "embeddings": []};
+    }
+
+    let textSections = [];
+    const extractText = async () => {
+        const fileInput = document.getElementById('pdfFileInput');
+        const outputDiv = document.querySelector('.output');
+        
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('Please select a PDF file.');
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = async function (event) {
+            const arrayBuffer = event.target.result;
+            const pdfData = new Uint8Array(arrayBuffer);
+
+            // Loading the PDF data using pdf.js
+            const loadingTask = pdfjsLib.getDocument(pdfData);
+
+            try {
+            const pdf = await loadingTask.promise;
+            const numPages = pdf.numPages;
+            // const numPages = 1;
+
+            let text = '';
+
+            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const content = await page.getTextContent();
+                let prevFont = 'Times';
+                let prevHeight = '';
+                content.items.forEach(item => {
+                if ((item.fontName == prevFont || prevFont == 'Times' || item.fontName == 'Times') && item.height == prevHeight) {
+                    text += " " + item.str;
+                    prevFont = item.fontName;
+                    prevHeight = item.height;
+                } else {
+                    prevFont = item.fontName;
+                    prevHeight = item.height;
+                    const processedText = text.toLowerCase().replace(/ - |- |[^\w\s]+/g, '');
+                    if (processedText.length >= 100) {
+                        textSections.push({ "text": processedText, "page": pageNum, "embedding": []});
+                    }
+                    text = item.str;
+                }
+                });
+            }
+
+            // Display the extracted text
+            textSections.forEach((item) => {
+                outputDiv.innerHTML += "<h6> page - " + item.page + " </h6><p>" + item.text + "</p";
+            });
+            EMBEDDING_DATA = textSections;
+            openOverlay();
+            document.querySelector("#embedProgressTotal").innerText = EMBEDDING_DATA.length;
+            const embeddingCounter = Math.ceil(textSections.length / 10);
+            for (let i = 0; i < embeddingCounter; i++) {
+                const tempEmbeddingArray = [];
+                for (let j = 0; j < 10; j++) {
+                    if (textSections[i*10 + j]) {
+                        tempEmbeddingArray.push(textSections[i*10 + j].text);
+                    }
+                }
+                await embedData(tempEmbeddingArray, i);
+            }
+
+            } catch (error) {
+                console.error('Error occurred while loading PDF:', error);
+            }
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+    const embedData = async (input, counter) => {
+        var myHeaders = new Headers();
+        myHeaders.append("Authorization", "Bearer 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");
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("Cookie", "__cf_bm=sZS4ccs01gIfUu2l6LdB5dCJCDqPOQ_e2jFMRy4c93E-1699901515-0-AWhPusAs8rEXK81u4AJ5SOeSl9VUkj+bWydGo6KSK9glj0dhQA91D9CqhfZHYonj1r+bWkgqlHKRY6NsbFFAvoI=; _cfuvid=VKgvEvQ2iybvDtOh4uxr1EwfCnZ3kRlgOQ5vsDcXHpc-1699901515075-0-604800000");
+
+        var raw = JSON.stringify({
+            "input": input,
+            "model": "text-embedding-ada-002",
+            "encoding_format": "float"
+        });
+
+        var requestOptions = {
+            method: 'POST',
+            headers: myHeaders,
+            body: raw,
+            redirect: 'follow'
+        };
+
+        let progressCounter = document.querySelector("#embedProgressCount");
+        fetch("https://api.openai.com/v1/embeddings", requestOptions)
+            .then(response => response.text())
+            .then(result => {
+                const embedData = JSON.parse(result).data;
+                embedData.forEach((data, index) => {
+                    setTimeout(() => {
+                        EMBEDDING_DATA[counter * 10 + index].embedding = "[" + data.embedding.toString() + "]";
+                        OVERLAY_COUNTER++;
+                        progressCounter.innerText = OVERLAY_COUNTER;
+                        if (OVERLAY_COUNTER == EMBEDDING_DATA.length) {
+                            closeOverlay();
+                        }
+                    }, 10 * index)
+                });
+
+            })
+            .catch(error => console.log('error', error));
+    }
+    
+    const arrayToCSV = (data) => {
+        const tempData = EMBEDDING_DATA;
+        const csvContent = "text,page,embedding\n" +
+        tempData.map(item => `${item.text},${item.page},${JSON.stringify(item.embedding)}`).join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'output.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function openOverlay() {
+        document.getElementById("overlay").style.display = "flex";
+    }
+    function closeOverlay() {
+        document.getElementById("overlay").style.display = "none";
+    }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-size: 16px;
+        }
+
+        .output {
+            max-width: 800px;
+            margin: auto;
+        }
+
+        .output > p {
+            padding: 10px;
+        }
+        .output > p:hover {
+            background-color: #ff000010;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 1;
+        }
+
+        .overlay-content {
+            background: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+        }
+    </style>
+</body>
+</html>
