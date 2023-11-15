@@ -15,6 +15,7 @@
             <button id="btnExtractText" onclick="extractText()">Extract Text</button>
             <button id="btnDownloadCSV" onclick="arrayToCSV()" disabled>Download CSV</button>
             <button id="btnUploadToDatabase" onclick="uploadToDatabase()" disabled>Upload to Database</button>
+            <button id="btnRemoveFromDatabase" onclick="removeFromDatabase()" disabled>Remove from Database</button>
             <button id="btnGenerateClusterAnalysis" onclick="generateClusterAnalysis()" disabled>Generate Cluster Analysis</button>
         </div>
         <div class="output"></div>
@@ -106,7 +107,8 @@
                                     chunk += textChunks[index + 1];
                                 }
                             }
-                            textSections.push({ "text": chunk, "source": file.name, "section": sectionCount + "-" + (index + 1), "page": pageNum, "embedding": []});
+                            const id = file.name.split(".")[0] + "_" + pageNum + "_" + sectionCount + "_" + (index + 1);
+                            textSections.push({ "id": id, "text": chunk, "source": file.name, "section": sectionCount + "-" + (index + 1), "page": pageNum, "embedding": []});
                         }
                     });
                     text = item.str;
@@ -166,7 +168,7 @@
                 const embedData = JSON.parse(result).data;
                 embedData.forEach((data, index) => {
                     setTimeout(() => {
-                        EMBEDDING_DATA[counter * 10 + index].embedding = "[" + data.embedding.toString() + "]";
+                        EMBEDDING_DATA[counter * 10 + index].embedding = data.embedding;
                         OVERLAY_COUNTER++;
                         progressCounter.innerText = OVERLAY_COUNTER;
                         if (OVERLAY_COUNTER == EMBEDDING_DATA.length) {
@@ -209,21 +211,20 @@
         document.querySelector("#btnExtractText").disabled = true;
         document.querySelector("#btnDownloadCSV").disabled = false;
         document.querySelector("#btnUploadToDatabase").disabled = false;
+        document.querySelector("#btnRemoveFromDatabase").disabled = false;
         document.querySelector("#btnGenerateClusterAnalysis").disabled = false;
         btnDownloadCSV
     }
 
     const uploadToDatabase = () => {
+    
+        console.log(EMBEDDING_DATA);
+
         var myHeaders = new Headers();
         myHeaders.append("Content-Type", "application/json");
         myHeaders.append('Accept', 'application/json');
         var raw = JSON.stringify(
-            { "items": [
-                { 
-                    "id": "hello",
-                    "name": "te123st"
-                }
-            ]}
+            { "items": EMBEDDING_DATA}
         );
         var requestOptions = {
         method: 'POST',
@@ -231,11 +232,33 @@
         body: raw,
         redirect: 'follow'
         };
-        fetch("https://experiment-function-js.azurewebsites.net/api/dbcosmosdelete", requestOptions)
+        fetch("https://experiment-function-js.azurewebsites.net/api/dbcosmosupdate", requestOptions)
             .then(response => response.text())
             .then(result => console.log(result))
             .catch(error => console.log('error', error));
-        }
+    }
+
+    const removeFromDatabase = () => {
+    
+    console.log(EMBEDDING_DATA);
+
+    var myHeaders = new Headers();
+    myHeaders.append("Content-Type", "application/json");
+    myHeaders.append('Accept', 'application/json');
+    var raw = JSON.stringify(
+        { "items": EMBEDDING_DATA}
+    );
+    var requestOptions = {
+    method: 'POST',
+    headers: myHeaders,
+    body: raw,
+    redirect: 'follow'
+    };
+    fetch("https://experiment-function-js.azurewebsites.net/api/dbcosmosdelete", requestOptions)
+        .then(response => response.text())
+        .then(result => console.log(result))
+        .catch(error => console.log('error', error));
+}
     </script>
 
     <style>
