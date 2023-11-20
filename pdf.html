@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Text Extractor</title>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
+	<script src='https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js'></script>
 </head>
 
 <body>
@@ -22,11 +24,25 @@
                 Database</button>
             <button class="controls" id="btnRemoveFromDatabase" onclick="removeFromDatabase()" disabled>Remove from
                 Database</button>
-            <button class="controls" id="btnGenerateClusterAnalysis" onclick="generateClusterAnalysis()"
-                disabled>Generate Cluster
-                Analysis</button>
+            <button class="controls" id="btnGenerateClusterAnalysis" onclick="runModelCluster()"
+                disabled>Generate Clusters</button>
+            <button class="controls" id="btnGenerateVisualization" onclick="openDiagram()"
+                disabled>Generate Diagram</button>
+            <br/>
+            <button class="controls" onclick="addTextbox()">Add Custom Article</button>
+            <button class="controls" onclick="removeTextbox()">Remove Custom Article</button>
         </div>
+
+        <div id="flexbox-container">
+        </div>
+
         <div class="output"></div>
+    </div>    
+    <div id="overlayDiagram" class="overlay">
+        <div style="position:absolute; top:20px; right: 20px; color: white; cursor: pointer; padding: 10px;" onclick="closeDiagram()">Close</div>
+        <div class="overlay-content">
+            <div id='myDiv'></div>
+        </div>
     </div>
     <div id="overlay" class="overlay">
         <div class="overlay-content">
@@ -36,6 +52,10 @@
     </div>
 
     <style>
+        .modebar {
+            display: none;
+        }
+
         body {
             font-family: 'Roboto', sans-serif;
             background-color: #f4f4f4;
@@ -46,6 +66,17 @@
             align-items: center;
             min-height: 100vh;
             font-size: 16px;
+        }
+
+        #flexbox-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #flexbox-container > * {
+            margin: auto;
+            margin-bottom: 5px;
+            width: 100%;
         }
 
         .controls {
@@ -86,17 +117,29 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
         }
 
+        #myDiv {
+            cursor: crosshair;
+        }
+
         #pdfFileInput {
             margin-right: 10px;
         }
+        
     </style>
 
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
         let EMBEDDING_DATA = [];
+        let EMBEDDING_ARRAY = [];
+        let CLUSTER_ARRAY = [];
+        let CLUSTER_COUNT = 8;
         let TEXT_SECTIONS = [];
         let OVERLAY_COUNTER = 0;
 
+        let DIAGRAM_DATA = new Array(CLUSTER_COUNT).fill("");
+        DIAGRAM_DATA.forEach((array, index) => {
+            DIAGRAM_DATA[index] = [];
+        });
 
         const initializeButtons = () => {
             document.querySelector('#proxyButton').addEventListener('click', function () {
@@ -112,17 +155,149 @@
             });
         }
 
+
+        const addTextbox = () => {
+            var flexboxContainer = document.getElementById("flexbox-container");
+            var newTextbox = document.createElement("input");
+            newTextbox.type = "text";
+            newTextbox.className = "textbox";
+            newTextbox.classList.add("article");
+            flexboxContainer.appendChild(newTextbox);
+        }
+
+        const removeTextbox = () => {
+            var flexboxContainer = document.getElementById("flexbox-container");
+            var textboxes = document.getElementsByClassName("textbox");
+            if (textboxes.length > 0) {
+            flexboxContainer.removeChild(textboxes[textboxes.length - 1]);
+            }
+        }
+
+        const initializeDiagram = () => {
+            d3.csv('https://raw.githubusercontent.com/plotly/datasets/master/3d-scatter.csv', function(err, rows){
+            /*
+            function unpack(rows, key) {
+                return rows.map(function(row)
+                { return row[key]; });}
+            */
+            //console.log(unpack(rows, 'x1'));
+            //console.log(unpack(rows, 'y1'));
+            //console.log(unpack(rows, 'z1'));
+            
+            let data = [];
+            let colors = ["blue", "green", "red", "yellow", "brown", "orange", "purple", "grey"];
+            let labels = [
+                "Cluster 0 - Legal, Political, International and Environmental Issues", 
+                "Cluster 1 - Annual Stockholders Meetings", 
+                "Cluster 2 - Economy, and Economic Policy Related", 
+                "Cluster 3 - Sports Related Topics", 
+                "Cluster 4 - Philippine Politics, Government and National Affairs", 
+                "Cluster 5 - Entertainment, Beauty, Travel and Lifestyle Topics", 
+                "Cluster 6 - Legal and Procedural Matters", 
+                "Cluster 7 - Various Information / Topics"
+            ];
+            let text = []
+            DIAGRAM_DATA.forEach((cluster, index) => {
+                let colx = [], coly = [], colz = [], coltext = [], colpage = [], colsection = [];
+                cluster.forEach((row) => {
+                    colx.push(row[1]);
+                    coly.push(row[2]);
+                    colz.push(row[3]);
+                    coltext.push(row[4].slice(0,70).replace(/ +(?= )/g,'') + "...");
+                    colpage.push(row[5]);
+                    colsection.push(row[6]);
+                })
+                let trace =  {
+                    x: colx, y: coly, z: colz, colpage: colpage, colsection: colsection,
+                    hovertemplate: 
+                    "<b></b><br>" +
+                    "<b>Page:</b><br>" +
+                    "<b>Section:</b><br><br>" +
+                    "<b>Text Snippet<br></b><i>%{text}</i>" +
+                    "<extra></extra>",
+                    name: labels[index],
+                    text: coltext,
+                    mode: 'markers',
+                    marker: {
+                        sizeref: 4000, 
+                        sizemode: "area",
+                        size: 10,
+                        opacity: 1},
+                    type: 'scatter3d'
+                }
+                data.push(trace);
+            });
+            console.log(data);
+
+            /*
+            var trace1 = {
+                x:unpack(rows, 'x1'), y: unpack(rows, 'y1'), z: unpack(rows, 'z1'),
+                mode: 'markers',
+                marker: {
+                    size: 15,
+                    line: {
+                    color: 'rgba(217, 217, 217)',
+                    width: 3},
+                    opacity: 1},
+                type: 'scatter3d'
+            };
+            
+            var trace2 = {
+                x:unpack(rows, 'x2'), y: unpack(rows, 'y2'), z: unpack(rows, 'z2'),
+                mode: 'markers',
+                marker: {
+                    color: 'rgb(127, 127, 127)',
+                    size: 15,
+                    symbol: 'square',
+                    line: {
+                    color: 'rgb(204, 204, 204)',
+                    width: 3},
+                    opacity: 1},
+                type: 'scatter3d'};
+            
+            //var data = [trace1, trace2];
+            */
+
+            var layout = {
+                width: 1000,
+                height: 800,
+                margin: {
+                    l: 5,
+                    r: 5,
+                    b: 5,
+                    t: 5
+                },
+                legend: {orientation: 'h', y: -0.3},
+                hoverlabel: { 
+                    bgcolor: "#FFF", 
+                    align: "left",
+                }
+            };
+            Plotly.newPlot('myDiv', data, layout, { responsive: true });
+            });
+        }
+
         const extractText = async () => {
             const fileInput = document.getElementById('pdfFileInput');
             const outputDiv = document.querySelector('.output');
 
+            const manualArticleElements = document.querySelectorAll(".article");
+            manualArticleElements.forEach((element, index) => {
+                if (element.value) {
+                    const id = "manual-input-" + index;
+                    TEXT_SECTIONS.push({ "id": id, "text": element.value, "source": "manual-input", "section": "manual-input", "page": 0, "embedding": [] });
+                }
+            })
+
             const file = fileInput.files[0];
             console.log(file);
 
+            /*
             if (!file) {
                 alert('Please select a PDF file.');
                 return;
             }
+            */
 
             const reader = new FileReader();
 
@@ -229,6 +404,7 @@
                     embedData.forEach((data, index) => {
                         setTimeout(() => {
                             EMBEDDING_DATA[counter * 10 + index].embedding = data.embedding;
+                            EMBEDDING_ARRAY[counter * 10 + index] = data.embedding;
                             OVERLAY_COUNTER++;
                             progressCounter.innerText = OVERLAY_COUNTER;
                             if (OVERLAY_COUNTER == EMBEDDING_DATA.length) {
@@ -244,7 +420,70 @@
                 });
         }
 
-        const arrayToCSV = (data) => {
+        const runModelCluster = () => {
+            document.querySelector(".overlay-content > p").innerHTML = "Identifying clusters, please wait...";
+            openOverlay();
+            var myHeaders = new Headers();
+            myHeaders.append("Content-Type", "application/json");
+
+            var raw = JSON.stringify({
+                "inputs": EMBEDDING_ARRAY
+            });
+
+            var requestOptions = {
+            method: 'POST',
+            headers: myHeaders,
+            body: raw,
+            redirect: 'follow'
+            };
+
+            fetch("https://experiment-function-py.azurewebsites.net/api/modelcluster", requestOptions)
+            .then(response => response.text())
+            .then(result => {
+                runModelReduction();
+                console.log(result);
+                const results = JSON.parse(result).results;
+                CLUSTER_ARRAY = results;
+                document.querySelectorAll(".output > h6").forEach((element, index) => {
+                    element.innerText += " | cluster " + results[index];
+                });
+            })
+            .catch(error => console.log('error', error));
+        }
+
+        const runModelReduction = () => {
+            var myHeaders = new Headers();
+            myHeaders.append("Content-Type", "application/json");
+
+            var raw = JSON.stringify({
+                "inputs": EMBEDDING_ARRAY
+            });
+
+            var requestOptions = {
+            method: 'POST',
+            headers: myHeaders,
+            body: raw,
+            redirect: 'follow'
+            };
+
+            fetch("https://experiment-function-py.azurewebsites.net/api/modelreduction", requestOptions)
+            .then(response => response.text())
+            .then(result => {
+                closeOverlay();
+                document.querySelector("#btnGenerateClusterAnalysis").disabled = true;
+                document.querySelector("#btnGenerateVisualization").disabled = false;
+                const results = JSON.parse(result).results;
+                console.log(results);
+                results.forEach((item, index) => {
+                    DIAGRAM_DATA[CLUSTER_ARRAY[index]].push([index, ...item, EMBEDDING_DATA[index].text, EMBEDDING_DATA[index].page, EMBEDDING_DATA[index].section]);
+                });
+                console.log(DIAGRAM_DATA);
+                initializeDiagram();
+            })
+            .catch(error => console.log('error', error));
+        }
+
+        const arrayToCSV = () => {
             const tempData = EMBEDDING_DATA;
             const csvContent = "text,source,page,section,embedding\n" +
                 tempData.map(item => `${item.text},${item.source},${item.page},${item.section},${JSON.stringify(item.embedding)}`).join('\n');
@@ -272,7 +511,15 @@
             document.querySelector("#btnUploadToDatabase").disabled = false;
             document.querySelector("#btnRemoveFromDatabase").disabled = false;
             document.querySelector("#btnGenerateClusterAnalysis").disabled = false;
-            btnDownloadCSV
+            
+        }
+
+        const openDiagram = () => {
+            document.getElementById("overlayDiagram").style.display = "flex";
+        }
+
+        const closeDiagram = () => {
+            document.getElementById("overlayDiagram").style.display = "none";
         }
 
         const uploadToDatabase = () => {
