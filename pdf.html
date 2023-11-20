@@ -349,7 +349,7 @@
 
                     // Display the extracted text
                     TEXT_SECTIONS.forEach((item) => {
-                        outputDiv.innerHTML += "<h6> page - " + item.page + " | " + " section " + item.section + " </h6><p>" + item.text + "</p";
+                        outputDiv.innerHTML += "<h6>prediction - <input type='number' id='quantity' name='quantity' min='0' max='7' style='margin-bottom: 5px;'><br/>page - " + item.page + " | " + " section " + item.section + " </h6><p>" + item.text + "</p";
                     });
                     EMBEDDING_DATA = TEXT_SECTIONS;
                     openOverlay();
@@ -373,6 +373,7 @@
             reader.readAsArrayBuffer(file);
         }
 
+        // This function can be converted into an Azure Function to secure the keys.
         const embedData = async (input, counter) => {
             var myHeaders = new Headers();
             myHeaders.append("Authorization", "Bearer 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");
@@ -441,7 +442,7 @@
                 const results = JSON.parse(result).results;
                 CLUSTER_ARRAY = results;
                 document.querySelectorAll(".output > h6").forEach((element, index) => {
-                    element.innerText += " | cluster " + results[index];
+                    element.innerHTML += " | cluster " + results[index];
                 });
             })
             .catch(error => console.log('error', error));
