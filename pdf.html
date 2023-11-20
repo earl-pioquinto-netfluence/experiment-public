@@ -278,24 +278,14 @@
             const fileInput = document.getElementById('pdfFileInput');
             const outputDiv = document.querySelector('.output');
 
-            const manualArticleElements = document.querySelectorAll(".article");
-            manualArticleElements.forEach((element, index) => {
-                if (element.value) {
-                    const id = "manual-input-" + index;
-                    TEXT_SECTIONS.push({ "id": id, "text": element.value, "source": "manual-input", "section": "manual-input", "page": 0, "embedding": [] });
-                }
-            })
-
             const file = fileInput.files[0];
             console.log(file);
 
-            /*
             if (!file) {
                 alert('Please select a PDF file.');
                 return;
             }
-            */
-
+            
             const reader = new FileReader();
 
             reader.onload = async function (event) {
@@ -306,6 +296,15 @@
                 const loadingTask = pdfjsLib.getDocument(pdfData);
 
                 try {
+
+                    const manualArticleElements = document.querySelectorAll(".article");
+                    manualArticleElements.forEach((element, index) => {
+                        if (element.value) {
+                            const id = "manual-input-" + index;
+                            TEXT_SECTIONS.push({ "id": id, "text": element.value, "source": "manual-input", "section": "manual-input", "page": 0, "embedding": [] });
+                        }
+                    })
+
                     const pdf = await loadingTask.promise;
                     const numPages = pdf.numPages;
                     // const numPages = 1;
