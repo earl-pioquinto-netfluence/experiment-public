@@ -29,8 +29,8 @@
             <button class="controls" id="btnGenerateVisualization" onclick="openDiagram()"
                 disabled>Generate Diagram</button>
             <br/>
-            <button class="controls" onclick="addTextbox()">Add Custom Article</button>
-            <button class="controls" onclick="removeTextbox()">Remove Custom Article</button>
+            <button class="controls" id="btnAddText" onclick="addTextbox()">Add Custom Article</button>
+            <button class="controls" id="btnRemoveText" onclick="removeTextbox()">Remove Custom Article</button>
         </div>
 
         <div id="flexbox-container">
@@ -135,6 +135,7 @@
         let CLUSTER_COUNT = 8;
         let TEXT_SECTIONS = [];
         let OVERLAY_COUNTER = 0;
+        let PREDICTION_ARRAY = [];
 
         let DIAGRAM_DATA = new Array(CLUSTER_COUNT).fill("");
         DIAGRAM_DATA.forEach((array, index) => {
@@ -279,7 +280,6 @@
             const outputDiv = document.querySelector('.output');
 
             const file = fileInput.files[0];
-            console.log(file);
 
             if (!file) {
                 alert('Please select a PDF file.');
@@ -349,7 +349,21 @@
 
                     // Display the extracted text
                     TEXT_SECTIONS.forEach((item) => {
-                        outputDiv.innerHTML += "<h6>prediction - <input type='number' id='quantity' name='quantity' min='0' max='7' style='margin-bottom: 5px;'><br/>page - " + item.page + " | " + " section " + item.section + " </h6><p>" + item.text + "</p";
+                        outputDiv.innerHTML += "<h6>" + 
+                            `
+                            <select class='prediction' name='prediction' style='margin-bottom: 5px; width: 100%;'>
+                                <option value="-1">Select Prediction</option>
+                                <option value="0">Cluster 0 - Legal, Political, International and Environmental Issues</option>
+                                <option value="1">Cluster 1 - Annual Stockholders Meetings</option>
+                                <option value="2">Cluster 2 - Economy, and Economic Policy Related</option>
+                                <option value="3">Cluster 3 - Sports Related Topics</option>
+                                <option value="4">Cluster 4 - Philippine Politics, Government and National Affairs</option>
+                                <option value="5">Cluster 5 - Entertainment, Beauty, Travel and Lifestyle Topics</option>
+                                <option value="6">Cluster 6 - Legal and Procedural Matters</option>
+                                <option value="7">Cluster 7 - Miscellaneous Information / Topics</option>
+                            </select>
+                            ` +
+                            "<br/>page - " + item.page + " | " + " section " + item.section + " </h6><p>" + item.text + "</p";
                     });
                     EMBEDDING_DATA = TEXT_SECTIONS;
                     openOverlay();
@@ -422,6 +436,8 @@
             openOverlay();
             var myHeaders = new Headers();
             myHeaders.append("Content-Type", "application/json");
+            
+            const predictions = document.querySelectorAll(".prediction");
 
             var raw = JSON.stringify({
                 "inputs": EMBEDDING_ARRAY
@@ -438,12 +454,28 @@
             .then(response => response.text())
             .then(result => {
                 runModelReduction();
-                console.log(result);
                 const results = JSON.parse(result).results;
+                let predictionTotal = 0;
+                let predictionCorrect = 0;
                 CLUSTER_ARRAY = results;
                 document.querySelectorAll(".output > h6").forEach((element, index) => {
-                    element.innerHTML += " | cluster " + results[index];
+                    if (parseInt(predictions[index].value) >= 0) {
+                        element.innerHTML += " | cluster " + results[index] + " | prediction " + predictions[index].value;
+                        element.querySelector('.prediction').selectedIndex = parseInt(predictions[index].value) + 1;
+                        PREDICTION_ARRAY.push({"prediction": predictions[index].value, "result": results[index]});
+                        if (parseInt(predictions[index].value) == results[index]) {
+                            predictionCorrect++;
+                        }
+                        predictionTotal++;
+                    } else {
+                        element.innerHTML += " | cluster " + results[index];
+                    }
+                    element.querySelector('.prediction').disabled = true;
                 });
+                
+                console.log("total predictions: " + predictionTotal);
+                console.log("correct predictions: " + predictionCorrect);
+                console.log("rating: " + Math.round((predictionCorrect/predictionTotal)*100,2) + "%");
             })
             .catch(error => console.log('error', error));
         }
@@ -470,11 +502,9 @@
                 document.querySelector("#btnGenerateClusterAnalysis").disabled = true;
                 document.querySelector("#btnGenerateVisualization").disabled = false;
                 const results = JSON.parse(result).results;
-                console.log(results);
                 results.forEach((item, index) => {
                     DIAGRAM_DATA[CLUSTER_ARRAY[index]].push([index, ...item, EMBEDDING_DATA[index].text, EMBEDDING_DATA[index].page, EMBEDDING_DATA[index].section]);
                 });
-                console.log(DIAGRAM_DATA);
                 initializeDiagram();
             })
             .catch(error => console.log('error', error));
@@ -508,7 +538,11 @@
             document.querySelector("#btnUploadToDatabase").disabled = false;
             document.querySelector("#btnRemoveFromDatabase").disabled = false;
             document.querySelector("#btnGenerateClusterAnalysis").disabled = false;
-            
+            document.querySelector("#btnAddText").disabled = true;
+            document.querySelector("#btnRemoveText").disabled = true;
+            document.querySelectorAll(".textbox").forEach((element) => {
+                element.disabled = true;
+            })
         }
 
         const openDiagram = () => {
